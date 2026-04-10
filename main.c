@@ -1,0 +1,776 @@
+#include <stdio.h>
+#include <malloc.h>
+#include <string.h>
+#include <stdlib.h>
+#include "pico/stdlib.h"
+#include "hardware/spi.h"
+#include "hardware/flash.h"
+#include "hardware/sync.h"
+#include "lfs.h"
+
+// variables used by the filesystem
+lfs_t lfs;
+lfs_file_t file;
+
+#define FLASH_OFFSET (1024 * 1024)
+#define FLASH_SIZE   (1024 * 1024)
+
+#define BLOCK_SIZE 4096
+#define READ_SIZE  256
+#define PROG_SIZE  256
+#define BLOCK_COUNT (FLASH_SIZE / BLOCK_SIZE)
+
+static int flash_read(const struct lfs_config *c,
+                      lfs_block_t block,
+                      lfs_off_t off, 
+                      void *buffer,
+                      lfs_size_t size) {
+    const uint8_t *flash = (const uint8_t *)(XIP_BASE + FLASH_OFFSET);
+    memcpy(buffer, flash + (block * BLOCK_SIZE) + off, size);
+    return 0;
+}
+
+static int flash_prog(const struct lfs_config *c,
+                      lfs_block_t block,
+                      lfs_off_t off,
+                      const void *buffer,
+                      lfs_size_t size) {
+
+    uint32_t ints = save_and_disable_interrupts();
+
+    flash_range_program(
+        FLASH_OFFSET + (block * BLOCK_SIZE) + off,
+        (const uint8_t *)buffer,
+        size
+    );
+
+    restore_interrupts(ints);
+    return 0;
+}
+
+static int flash_erase(const struct lfs_config *c,
+                       lfs_block_t block) {
+
+    uint32_t ints = save_and_disable_interrupts();
+
+    flash_range_erase(
+        FLASH_OFFSET + (block * BLOCK_SIZE),
+        BLOCK_SIZE
+    );
+
+    restore_interrupts(ints);
+    return 0;
+}
+
+static int flash_sync(const struct lfs_config *c) {
+    return 0;
+}
+
+// configuration of the filesystem is provided by this struct
+const struct lfs_config cfg = {
+    // block device operations
+    .read  = flash_read,
+    .prog  = flash_prog,
+    .erase = flash_erase,
+    .sync  = flash_sync,
+
+    // block device configuration
+    .read_size = READ_SIZE,
+    .prog_size = PROG_SIZE,
+    .block_size = BLOCK_SIZE,
+    .block_count = BLOCK_COUNT,
+    .cache_size = 256,
+    .lookahead_size = 256,
+    .block_cycles = 500,
+};
+
+uint8_t COM_REGS = 0x00;
+uint8_t S0_REGS = 0x01;
+uint8_t S0_TX = 0x02;
+uint8_t S0_RX = 0x03;
+
+uint8_t OPEN = 0x01;
+uint8_t LISTEN = 0x02;
+uint8_t CONNECT_W = 0x04;
+uint8_t DISCON = 0x08;
+uint8_t CLOSE = 0x10;
+uint8_t SEND = 0x20;
+uint8_t SEND_MAC = 0x21;
+uint8_t SEND_KEEP = 0x22;
+uint8_t RECV = 0x40;
+
+uint8_t indexHTML[] = {
+    "<html>\n<body>\n<h1>Hello, People! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t blake[] = {
+    "<html>\n<body>\n<h1>Hello, Blake! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t clayton[] = {
+    "<html>\n<body>\n<h1>Hello, Clayton! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t cami[] = {
+    "<html>\n<body>\n<h1>Hello, Cami! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t edc[] = {
+    "<html>\n<body>\n<h1>Hello, EDC! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t mikhail[] = {
+    "<html>\n<body>\n<h1>Hello, Mikhail! :) </h1>\n</body>\n</html>"
+};
+
+uint8_t error404[] = {
+    "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n<html>\n<head>\n<title>404 Not Found</title>\n</head>\n<body>\n<h1>Not Found</h1>\n<p>The requested URL was not found on this server.</p>\n</body>\n</html>"
+};
+
+uint8_t *header_types[] = {"Accept", "Accept-Charset", "Accept-Encoding", "Accept-Language", "Accept-Ranges", "Age",
+    "Allow", "Authorization", "Cache-Control", "Connection", "Content-Encoding", "Content-Langauge", "Content-Length",
+    "Content-Location", "Content-MD5", "Content-Range", "Content-Type", "Date", "ETag", "Expect", "Expires", "From",
+    "Host", "If-Match", "If-Modified-Since", "If-None-Match", "If-Range", "If-Unmodified-Since", "Last-Modified", "Location",
+    "Max-Forwards", "Pragma", "Proxy-Authenticate", "Proxy-Authorization", "Range", "Referer", "Retry-After", "Server", 
+    "TE", "Trailer", "Transfer-Encoding", "Upgrade", "User-Agent", "Vary", "Via", "Warning", "WWW-Authenticate"};
+
+uint8_t *method_types[] = {""};
+
+uint8_t *reason_phrases[] = {"Continue", "Switching Protocols", "OK", "Created", "Accepted", "Non-Authorotative Information", 
+    "No Content", "Reset Content", "Partial Content", "Multiple Choices", "Moved Permanently", "Found", "See Other", "Not Modified", 
+    "Use Proxy", "Temporary Redirect", "Bad Request", "Unauthorized", "Payment Required", "Forbidden", "Not Found", "Method Not Allowed",
+    "Not Acceptable", "Proxy Authentication Required", "Request Time-out", "Conflict", "Gone", "Length Required", "Precondition Failed",
+    "Request Entitiy Too Large", "Request-URI Too Large", "Unsupported Media Type", "Requested range not satisfiable", 
+    "Expectation Failed", "Internal Server Error", "Not Implemented", "Bad Gateway", "Service Unavailable", "Gateway Time-out",
+    "HTTP Version not supported"};
+
+struct request_line {
+    uint8_t method[16];
+    uint8_t uri[256];
+    uint8_t http_version[16];
+};
+
+struct status_line {
+    uint8_t http_version[16];
+    uint8_t status_code[4];
+    uint8_t reason_phrase[256];
+};
+
+struct http_header {
+    uint8_t name[256];
+    uint8_t value[1024];
+    struct http_header *next;
+};
+
+struct http_body {
+    uint8_t *body;
+    uint16_t size;
+};
+
+struct http_request {
+    struct request_line rq_line;
+    struct http_header headers[32];
+    uint8_t header_cnt;
+    struct http_body body;
+};
+
+struct http_response {
+    struct status_line stat_line;
+    struct http_header headers[32];
+    uint8_t header_cnt;
+    struct http_body body;
+};
+
+static inline void cs_select() {
+    asm volatile("nop \n nop \n nop");
+    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);  // Active low
+    asm volatile("nop \n nop \n nop");
+}
+
+static inline void cs_deselect() {
+    asm volatile("nop \n nop \n nop");
+    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
+    asm volatile("nop \n nop \n nop");
+}
+
+static void write_register(uint16_t address, uint8_t block, uint8_t *data, uint16_t len) {
+    uint8_t addr[3];
+    addr[0] = address >> 8;
+    addr[1] = address & 0x00FF;
+    addr[2] = block << 3 | 0x04;
+
+    cs_select();
+    spi_write_blocking(spi_default, addr, 3);
+    spi_write_blocking(spi_default, data, len);
+    cs_deselect();
+}
+
+static void read_registers(uint16_t address, uint8_t block, uint8_t *buf, uint16_t len) {
+    // For this particular device, we send the device the register we want to read
+    // first, then subsequently read from the device. The register is auto incrementing
+    // so we don't need to keep sending the register we want, just the first.
+    uint8_t addr[3];
+    addr[0] = address >> 8;
+    addr[1] = address & 0x00FF;
+    addr[2] = block << 3; 
+    cs_select();
+    spi_write_blocking(spi_default, addr, 3);
+    spi_read_blocking(spi_default, 0xFF, buf, len);
+    cs_deselect();
+}
+
+uint16_t receive(uint8_t sn, uint8_t *buf) {
+    uint8_t S_REGS = 0x01 + 0x04 * sn;
+    uint8_t S_RX = 0x03 + 0x04 * sn;
+
+    uint8_t size[2];
+    read_registers(0x0026, S_REGS, size, 2);
+    uint16_t RSR = size[0] << 8 | size[1];
+
+    uint8_t a[2];
+    read_registers(0x0028, S_REGS, a, 2);
+    uint16_t address = a[0] << 8 | a[1];
+
+    read_registers(address & 0x7FF, S_RX, buf, RSR);
+
+    address += RSR;
+    a[0] = address >> 8;
+    a[1] = address & 0xFF;
+    write_register(0x0028, S_REGS, a, 2);
+
+    write_register(0x0001, S_REGS, &RECV, 1);
+
+    return RSR;
+}
+
+void send(uint8_t sn, uint8_t *buf, uint16_t length) {
+    uint8_t S_REGS = 0x01 + 0x04 * sn;
+    uint8_t S_TX = 0x02 + 0x04 * sn;
+
+    uint8_t tx_a[2];
+    read_registers(0x0024, S_REGS, tx_a, 2);
+    uint16_t tx_address = tx_a[0] << 8 | tx_a[1];
+
+    write_register(tx_address & 0x7FF, S_TX, buf, length);
+
+    tx_address += length;
+    tx_a[0] = tx_address >> 8;
+    tx_a[1] = tx_address & 0xFF;
+    write_register(0x0024, S_REGS, tx_a, 2);
+
+    write_register(0x0001, S_REGS, &SEND, 1);
+}
+
+int parseHTTP(uint8_t *message, uint16_t size, struct http_request *rq) {
+    uint16_t mess_ptr = 0;
+    uint8_t i = 0;
+    while (message[mess_ptr] != ' ') {
+        rq->rq_line.method[i] = message[mess_ptr];
+        i++; mess_ptr++;
+        if (i == 16) {
+            return -1;
+        }
+    }
+
+    rq->rq_line.method[i] = '\0';
+    i = 0; mess_ptr++;
+
+    while (message[mess_ptr] != ' ') {
+        rq->rq_line.uri[i] = message[mess_ptr];
+        i++; mess_ptr++;
+        if (i == 256) {
+            return -2;
+        }
+    }
+
+    rq->rq_line.uri[i] = '\0';
+    i = 0; mess_ptr++;
+
+    while (message[mess_ptr] != '\r') {
+        rq->rq_line.http_version[i] = message[mess_ptr];
+        i++; mess_ptr++;
+        if (i == 16) {
+            return -3;
+        }
+    }
+
+    rq->rq_line.http_version[i] = '\0';
+    i = 0; mess_ptr += 2;
+    uint8_t header_cnt = 0;
+    rq->body.size = 0;
+
+    while (1) {
+        if (message[mess_ptr] == '\r') {
+            mess_ptr += 2;
+            break;
+        } else {
+            i = 0;
+            while (message[mess_ptr] != ':') {
+                rq->headers[header_cnt].name[i] = message[mess_ptr];
+                i++; mess_ptr++;
+            }
+
+            rq->headers[header_cnt].name[i] = '\0';
+            i = 0; mess_ptr++;
+            while (message[mess_ptr] == ' ') {
+                mess_ptr++;
+            };
+
+            while (message[mess_ptr] != '\r') {
+                rq->headers[header_cnt].value[i] = message[mess_ptr];
+                i++; mess_ptr++;
+            }
+
+            if (strcmp(rq->headers[header_cnt].name, "Content-Length") == 0) {
+                rq->body.size = atoi(rq->headers[header_cnt].value);
+            }
+
+            rq->headers[header_cnt].value[i] = '\0';
+            mess_ptr += 2;
+        }
+
+        header_cnt++;
+    }
+
+    rq->header_cnt = header_cnt;
+    rq->body.body = malloc((rq->body.size + 1) * sizeof(uint8_t));
+
+    i = 0;
+    while (i < rq->body.size) {
+        rq->body.body[i] = message[mess_ptr];
+        i++; mess_ptr++;
+    }
+
+    rq->body.body[i] = '\0';
+
+    return 0;
+}
+
+uint16_t formatResponse(uint8_t *message, struct http_response *rs) {
+    uint8_t i = 0;
+    uint16_t mess_ptr = 0;
+    while (rs->stat_line.http_version[i] != '\0') {
+        message[mess_ptr] = rs->stat_line.http_version[i];
+        i++; mess_ptr++;
+    }
+
+    message[mess_ptr] = ' ';
+    i = 0; mess_ptr++;
+
+    while (rs->stat_line.status_code[i] != '\0') {
+        message[mess_ptr] = rs->stat_line.status_code[i];
+        i++; mess_ptr++;
+    }
+
+    message[mess_ptr] = ' ';
+    i = 0; mess_ptr++;
+
+    while (rs->stat_line.reason_phrase[i] != '\0') {
+        message[mess_ptr] = rs->stat_line.reason_phrase[i];
+        i++; mess_ptr++;
+    }
+
+    message[mess_ptr] = '\r';
+    mess_ptr++;
+    message[mess_ptr] = '\n';
+    mess_ptr++;
+
+    for (int n = 0; n < rs->header_cnt; n++) {
+        i = 0;
+        while (rs->headers[n].name[i] != '\0') {
+            message[mess_ptr] = rs->headers[n].name[i];
+            i++; mess_ptr++;
+        }
+
+        message[mess_ptr] = ':';
+        mess_ptr++;
+        message[mess_ptr] = ' ';
+        mess_ptr++;
+
+        i = 0;
+        while (rs->headers[n].value[i] != '\0') {
+            message[mess_ptr] = rs->headers[n].value[i];
+            i++; mess_ptr++;
+        }
+
+        message[mess_ptr] = '\r';
+        mess_ptr++;
+        message[mess_ptr] = '\n';
+        mess_ptr++;
+    }
+
+    message[mess_ptr] = '\r';
+    mess_ptr++;
+    message[mess_ptr] = '\n';
+    mess_ptr++;
+
+    for (int n = 0; n < rs->body.size; n++) {
+        message[mess_ptr] = rs->body.body[n];
+        mess_ptr++;
+    }
+
+    return mess_ptr;
+}
+
+void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
+    strcpy(rs->stat_line.http_version, "HTTP/1.1");
+
+    struct lfs_info info;
+    int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
+
+    if (strcmp(rq->rq_line.uri, "/") == 0 || strcmp(rq->rq_line.uri, "/index.html") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else if (strcmp(rq->rq_line.uri, "/blake") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/blake/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else if (strcmp(rq->rq_line.uri, "/clayton") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/clayton/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else if (strcmp(rq->rq_line.uri, "/cami") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/cami/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else if (strcmp(rq->rq_line.uri, "/edc") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/edc/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else if (strcmp(rq->rq_line.uri, "/mikhail") == 0) {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/mikhail/index.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else {
+        strcpy(rs->stat_line.status_code, "404");
+        strcpy(rs->stat_line.reason_phrase, "Not Found");
+        rs->header_cnt = 3;
+        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    }
+}
+
+void printRequest(struct http_request *rq) {
+    printf("%s\n", rq->rq_line.method);
+    printf("%s\n", rq->rq_line.uri);
+    printf("%s\n", rq->rq_line.http_version);
+
+    for (int i = 0; i < rq->header_cnt; i++) {
+        printf("%s\n", rq->headers[i].name);
+        printf("%s\n", rq->headers[i].value);
+    }
+
+    if (rq->body.size > 0) {
+        printf("%s\n", rq->body.body);
+    }
+}
+
+int main () {
+    stdio_init_all();
+
+    sleep_ms(2000);
+
+    printf("Initializing filesystem...\n");
+    int err = lfs_mount(&lfs, &cfg);
+
+    if (err) {
+        lfs_format(&lfs, &cfg);
+        lfs_mount(&lfs, &cfg);
+    }
+
+    #ifdef REMOVE_FILES
+
+    lfs_remove(&lfs, "/index.html");
+    lfs_remove(&lfs, "/404.html");
+    lfs_remove(&lfs, "/blake/index.html");
+    lfs_remove(&lfs, "/blake");
+    lfs_remove(&lfs, "/clayton/index.html");
+    lfs_remove(&lfs, "/clayton");
+    lfs_remove(&lfs, "/cami/index.html");
+    lfs_remove(&lfs, "/cami");
+    lfs_remove(&lfs, "/edc/index.html");
+    lfs_remove(&lfs, "/edc");
+    lfs_remove(&lfs, "/mikhail/index.html");
+    lfs_remove(&lfs, "/mikhail");
+
+    #endif
+
+    struct lfs_info info;
+    int stat = lfs_stat(&lfs, "/index.html", &info);
+
+    if (stat != 0) {
+        printf("Creating index.html...\n");
+        lfs_file_open(&lfs, &file, "/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(indexHTML);
+        lfs_file_write(&lfs, &file, indexHTML, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("index.html already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/404.html", &info);
+
+    if (stat != 0) {
+        printf("Creating 404.html...\n");
+        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(error404);
+        lfs_file_write(&lfs, &file, error404, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("404.html already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/blake", &info);
+
+    if (stat != 0) {
+        printf("Creating Blake folder...\n");
+        lfs_mkdir(&lfs, "/blake");
+        lfs_file_open(&lfs, &file, "/blake/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(blake);
+        lfs_file_write(&lfs, &file, blake, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("Blake folder already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/clayton", &info);
+
+    if (stat != 0) {
+        printf("Creating Clayton folder...\n");
+        lfs_mkdir(&lfs, "/clayton");
+        lfs_file_open(&lfs, &file, "/clayton/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(clayton);
+        lfs_file_write(&lfs, &file, clayton, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("Clayton folder already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/cami", &info);
+
+    if (stat != 0) {
+        printf("Creating Cami folder...\n");
+        lfs_mkdir(&lfs, "/cami");
+        lfs_file_open(&lfs, &file, "/cami/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(cami);
+        lfs_file_write(&lfs, &file, cami, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("Cami folder already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/edc", &info);
+
+    if (stat != 0) {
+        printf("Creating EDC folder...\n");
+        lfs_mkdir(&lfs, "/edc");
+        lfs_file_open(&lfs, &file, "/edc/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(edc);
+        lfs_file_write(&lfs, &file, edc, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("EDC folder already exists...\n");
+    }
+
+    stat = lfs_stat(&lfs, "/mikhail", &info);
+
+    if (stat != 0) {
+        printf("Creating Mikahil folder...\n");
+        lfs_mkdir(&lfs, "/mikhail");
+        lfs_file_open(&lfs, &file, "/mikhail/index.html", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = strlen(mikhail);
+        lfs_file_write(&lfs, &file, mikhail, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+    } else {
+        printf("Mikhail folder already exists...\n");
+    }
+
+    printf("Reading Chip ID of W5500...\n");
+
+    spi_init(spi_default, 5000*1000);
+    gpio_set_function(PICO_DEFAULT_SPI_RX_PIN, GPIO_FUNC_SPI);
+    gpio_set_function(PICO_DEFAULT_SPI_SCK_PIN, GPIO_FUNC_SPI);
+    gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
+
+    gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
+    gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
+    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
+
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    gpio_put(PICO_DEFAULT_LED_PIN, 1);
+
+    uint8_t id;
+    read_registers(0x0039, COM_REGS, &id, 1);
+
+    printf("Chip ID is 0x%02x\n", id);
+    
+    sleep_ms(10);
+
+    printf("Setting Gateway IP address...\n");
+
+    uint8_t g_ip[4] = {192, 168, 1, 254};
+    write_register(0x0001, COM_REGS, g_ip, 4);
+
+    printf("Setting Chip MAC address...\n");
+
+    uint8_t MAC[6] = {0x12, 0x34, 0x56, 0x78, 0x90, 0x12};
+    write_register(0x0009, COM_REGS, MAC, 6);
+
+    printf("Setting Source IP address...\n");
+
+    uint8_t s_ip[4] = {192, 168, 1, 100};
+    write_register(0x000F, COM_REGS, s_ip, 4);
+
+    printf("Setting Subnet Mask...\n");
+
+    uint8_t subnet[4] = {255, 255, 255, 0};
+    write_register(0x0005, COM_REGS, subnet, 4);
+
+    printf("Setting up Socket 0...\n");
+
+    // set Socket 0 to TCP Mode
+    uint8_t S0_MODE = 0x01; // TCP
+    write_register(0x0000, S0_REGS, &S0_MODE, 1);
+
+    // set port number to 5000
+    uint16_t S0_PORT_NUM = 80;
+    uint8_t S0_PORT[2] = {S0_PORT_NUM >> 8, S0_PORT_NUM & 0xFF};
+    write_register(0x0004, S0_REGS, S0_PORT, 2);
+
+    uint8_t interrupt_clear = 0x1F;
+    write_register(0x0002, S0_REGS, &interrupt_clear, 1);
+
+    // set Socket 0 to OPEN, then LISTEN
+    write_register(0x0001, S0_REGS, &OPEN, 1);
+    uint8_t status;
+    do {
+        read_registers(0x0003, S0_REGS, &status, 1);
+    } while (status != 0x13);
+    write_register(0x0001, S0_REGS, &LISTEN, 1);
+
+    while (1) {
+        uint8_t c[2048];
+        uint8_t ir;
+
+        read_registers(0x0002, 0x01, &ir, 1);
+        if (ir & 0x04) {
+            struct http_request rq;
+            struct http_response rs;
+            uint16_t size = receive(0, c);
+            int code = parseHTTP(c, size, &rq);
+            printRequest(&rq);
+            respondHTTP(&rq, &rs, code);
+            size = formatResponse(c, &rs);
+            gpio_put(PICO_DEFAULT_LED_PIN, !gpio_get(PICO_DEFAULT_LED_PIN));
+            c[size] = '\0';
+            printf("%s\n", c);
+            
+            send(0, c, size);
+
+            free(rs.body.body);
+            free(rq.body.body);
+
+            write_register(0x0002, S0_REGS, &interrupt_clear, 1);
+        }
+
+        uint8_t status;
+        read_registers(0x0003, S0_REGS, &status, 1);
+
+        if (status == 0x1C) {
+            write_register(0x0001, S0_REGS, &CLOSE, 1);
+            write_register(0x0001, S0_REGS, &OPEN, 1);
+            write_register(0x0001, S0_REGS, &LISTEN, 1);
+        }
+    }
+}
