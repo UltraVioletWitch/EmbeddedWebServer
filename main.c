@@ -134,7 +134,7 @@ uint8_t *header_types[] = {"Accept", "Accept-Charset", "Accept-Encoding", "Accep
     "Max-Forwards", "Pragma", "Proxy-Authenticate", "Proxy-Authorization", "Range", "Referer", "Retry-After", "Server", 
     "TE", "Trailer", "Transfer-Encoding", "Upgrade", "User-Agent", "Vary", "Via", "Warning", "WWW-Authenticate"};
 
-uint8_t *method_types[] = {""};
+uint8_t *method_types[] = {"OPTIONS", "GET", "HEAD", "POST", "PUT", "DELETE", "TRACE", "CONNECT"};
 
 uint8_t *reason_phrases[] = {"Continue", "Switching Protocols", "OK", "Created", "Accepted", "Non-Authorotative Information", 
     "No Content", "Reset Content", "Partial Content", "Multiple Choices", "Moved Permanently", "Found", "See Other", "Not Modified", 
@@ -412,102 +412,15 @@ uint16_t formatResponse(uint8_t *message, struct http_response *rs) {
     return mess_ptr;
 }
 
-void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
-    strcpy(rs->stat_line.http_version, "HTTP/1.1");
-
+void respondGET(struct http_request *rq, struct http_response *rs, int code) {
     struct lfs_info info;
     int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
 
-    if (strcmp(rq->rq_line.uri, "/") == 0 || strcmp(rq->rq_line.uri, "/index.html") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
+    if (stat != 0) {
+        strcpy(rs->stat_line.status_code, "404");
+        strcpy(rs->stat_line.reason_phrase, "Not Found");
         rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/index.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else if (strcmp(rq->rq_line.uri, "/blake") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/blake/index.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else if (strcmp(rq->rq_line.uri, "/clayton") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/clayton/index.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else if (strcmp(rq->rq_line.uri, "/cami") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/cami/index.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else if (strcmp(rq->rq_line.uri, "/edc") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/edc/index.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else if (strcmp(rq->rq_line.uri, "/mikhail") == 0) {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/mikhail/index.html", LFS_O_RDWR);
+        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
         rs->body.size = lfs_file_size(&lfs, &file);
         rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
         lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
@@ -521,10 +434,55 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
         strcpy(rs->headers[2].name, "Content-Type");
         strcpy(rs->headers[2].value, "text/html");
     } else {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        strcat(rq->rq_line.uri, "/index.html");
+        lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    }
+}
+
+void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
+    strcpy(rs->stat_line.http_version, "HTTP/1.1");
+
+    struct lfs_info info;
+    int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
+
+    if (stat != 0) {
         strcpy(rs->stat_line.status_code, "404");
         strcpy(rs->stat_line.reason_phrase, "Not Found");
         rs->header_cnt = 3;
         lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
+        rs->body.size = lfs_file_size(&lfs, &file);
+        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+        lfs_file_close(&lfs, &file);
+        strcpy(rs->headers[0].name, "Connection");
+        strcpy(rs->headers[0].value, "close");
+        strcpy(rs->headers[1].name, "Content-Length");
+        uint8_t length[16];
+        sprintf(length, "%d\0", rs->body.size);
+        strcpy(rs->headers[1].value, length);
+        strcpy(rs->headers[2].name, "Content-Type");
+        strcpy(rs->headers[2].value, "text/html");
+    } else {
+        strcpy(rs->stat_line.status_code, "200");
+        strcpy(rs->stat_line.reason_phrase, "OK");
+        rs->header_cnt = 3;
+        strcat(rq->rq_line.uri, "/index.html");
+        lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
         rs->body.size = lfs_file_size(&lfs, &file);
         rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
         lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
