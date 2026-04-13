@@ -582,13 +582,11 @@ int main () {
     printf("Setting up Socket 0...\n");
 
     // set Socket 0 to TCP Mode
-    uint8_t S0_MODE = 0x01; // TCP
-    write_register(0x0000, 0x01, &S0_MODE, 1);
+    setSocketMode(0, TCP);
 
     // set port number to 5000
     uint16_t S0_PORT_NUM = 80;
-    uint8_t S0_PORT[2] = {S0_PORT_NUM >> 8, S0_PORT_NUM & 0xFF};
-    write_register(0x0004, 0x01, S0_PORT, 2);
+    setSocketPort(0, S0_PORT_NUM);
 
     uint8_t interrupt_clear = 0x1F;
     write_register(0x0002, 0x01, &interrupt_clear, 1);
@@ -597,15 +595,14 @@ int main () {
     socketCommand(0, OPEN);
     uint8_t status;
     do {
-        read_registers(0x0003, 0x01, &status, 1);
-    } while (status != 0x13);
+        status = readStatusRegister(0);
+    } while (status != SOCK_INIT);
     socketCommand(0, LISTEN);
 
     while (1) {
         uint8_t c[2048];
-        uint8_t ir;
+        uint8_t ir = readSocketInterrupt(0);
 
-        read_registers(0x0002, 0x01, &ir, 1);
         if (ir & 0x04) {
             struct http_request rq;
             struct http_response rs;
@@ -623,13 +620,12 @@ int main () {
             free(rs.body.body);
             free(rq.body.body);
 
-            write_register(0x0002, 0x01, &interrupt_clear, 1);
+            clearSocketInterrupt(0, ir);
         }
 
-        uint8_t status;
-        read_registers(0x0003, 0x01, &status, 1);
+        status = readStatusRegister(0);
 
-        if (status == 0x1C) {
+        if (status == SOCK_CLOSE_WAIT) {
             socketCommand(0, CLOSE);
             socketCommand(0, OPEN);
             socketCommand(0, LISTEN);

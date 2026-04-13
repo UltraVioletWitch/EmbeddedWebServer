@@ -9,6 +9,12 @@
 #define S_TX(sn)     (0x02 + 0x04 * (sn))
 #define S_RX(sn)     (0x03 + 0x04 * (sn))
 
+// Socket Modes
+#define CLOSED    0x0
+#define TCP       0x1
+#define UDP       0x2
+#define MACRAW    0x4
+
 // Socket Commands
 #define OPEN      0x01
 #define LISTEN    0x02
@@ -19,6 +25,21 @@
 #define SEND_MAC  0x21
 #define SEND_KEEP 0x22
 #define RECV      0x40
+
+// Socket Status
+#define SOCK_CLOSED      0x00
+#define SOCK_INIT        0x13
+#define SOCK_LISTEN      0x14
+#define SOCK_ESTABLISHED 0x17
+#define SOCK_CLOSE_WAIT  0x1C
+#define SOCK_UDP         0x22
+#define SOCK_MACRAW      0x42
+#define SOCK_SYNSENT     0x15
+#define SOCK_SYNRECV     0x16
+#define SOCK_FIN_WAIT    0x18
+#define SOCK_CLOSING     0x1A
+#define SOCK_TIME_WAIT   0x1B
+#define SOCK_LAST_ACK    0x1D
 
 // Common Registers
 #define MR       0x00
@@ -84,5 +105,13 @@ void setGatewayIP(uint8_t *g_ip);
 void setMACAddress(uint8_t *MAC);
 void setSourceIP(uint8_t *s_ip);
 void setSubnetMask(uint8_t *subnet);
+
+void setSocketMode(uint8_t sn, uint8_t mode);
+void setSocketPort(uint8_t sn, uint16_t port);
+
+uint8_t readStatusRegister(uint8_t sn);
+
+uint8_t readSocketInterrupt(uint8_t sn);
+void clearSocketInterrupt(uint8_t sn, uint8_t ir);
 
 #endif

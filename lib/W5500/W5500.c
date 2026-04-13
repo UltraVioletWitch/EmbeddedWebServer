@@ -84,7 +84,10 @@ void send(uint8_t sn, uint8_t *buf, uint16_t length) {
 
 uint8_t readChipID() {
     uint8_t id;
+
     read_registers(VERSIONR, COM_REGS, &id, 1);
+
+    return id;
 }
 
 void setGatewayIP(uint8_t *g_ip) {
@@ -101,4 +104,39 @@ void setSourceIP(uint8_t *s_ip) {
 
 void setSubnetMask(uint8_t *subnet) {
     write_register(SUBR, COM_REGS, subnet, 4);
+}
+
+void setSocketMode(uint8_t sn, uint8_t mode) {
+    uint8_t reg = S_REGS(sn);
+    write_register(Sn_MR, reg, &mode, 1);
+}
+
+void setSocketPort(uint8_t sn, uint16_t port) {
+    uint8_t reg = S_REGS(sn);
+    uint8_t p[2] = {port >> 8, port & 0xFF};
+    write_register(Sn_PORT, reg, p, 2);
+}
+
+uint8_t readStatusRegister(uint8_t sn) {
+    uint8_t reg = S_REGS(sn);
+    uint8_t status;
+
+    read_registers(Sn_SR, reg, &status, 1);
+
+    return status;
+}
+
+uint8_t readSocketInterrupt(uint8_t sn) {
+    uint8_t reg = S_REGS(sn);
+    uint8_t ir;
+
+    read_registers(Sn_IR, reg, &ir, 1);
+
+    return ir;
+}
+
+void clearSocketInterrupt(uint8_t sn, uint8_t ir) {
+    uint8_t reg = S_REGS(sn);
+
+    write_register(Sn_IR, reg, &ir, 1);
 }
