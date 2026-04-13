@@ -562,22 +562,22 @@ int main () {
     printf("Setting Gateway IP address...\n");
 
     uint8_t g_ip[4] = {192, 168, 1, 254};
-    write_register(0x0001, 0x00, g_ip, 4);
+    setGatewayIP(g_ip);
 
     printf("Setting Chip MAC address...\n");
 
     uint8_t MAC[6] = {0x12, 0x34, 0x56, 0x78, 0x90, 0x12};
-    write_register(0x0009, 0x00, MAC, 6);
+    setMACAddress(MAC);
 
     printf("Setting Source IP address...\n");
 
     uint8_t s_ip[4] = {192, 168, 1, 100};
-    write_register(0x000F, 0x00, s_ip, 4);
+    setSourceIP(s_ip);
 
     printf("Setting Subnet Mask...\n");
 
     uint8_t subnet[4] = {255, 255, 255, 0};
-    write_register(0x0005, 0x00, subnet, 4);
+    setSubnetMask(subnet);
 
     printf("Setting up Socket 0...\n");
 
