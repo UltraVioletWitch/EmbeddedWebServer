@@ -22,8 +22,9 @@ add_executable(${PROJECT} main.c)
 pico_add_extra_outputs(${PROJECT})
 
 add_subdirectory(lib)
-target_link_libraries(${PROJECT} PRIVATE pico_stdlib hardware_spi lfs)
+target_link_libraries(${PROJECT} PRIVATE pico_stdlib hardware_spi lfs W5500)
 target_include_directories(lfs PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/littlefs)
+target_include_directories(W5500 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/W5500)
 
 pico_enable_stdio_usb(${PROJECT} 1)
 pico_enable_stdio_uart(${PROJECT} 0)

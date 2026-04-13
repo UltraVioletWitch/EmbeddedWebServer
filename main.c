@@ -7,13 +7,14 @@
 #include "hardware/flash.h"
 #include "hardware/sync.h"
 #include "lfs.h"
+#include "W5500.h"
 
 // variables used by the filesystem
 lfs_t lfs;
 lfs_file_t file;
 
-#define FLASH_OFFSET (1024 * 1024)
-#define FLASH_SIZE   (1024 * 1024)
+#define FLASH_OFFSET (1024 * 1024) // 1 MB
+#define FLASH_SIZE   (1024 * 1024) // 1 MB
 
 #define BLOCK_SIZE 4096
 #define READ_SIZE  256
@@ -83,21 +84,6 @@ const struct lfs_config cfg = {
     .lookahead_size = 256,
     .block_cycles = 500,
 };
-
-uint8_t COM_REGS = 0x00;
-uint8_t S0_REGS = 0x01;
-uint8_t S0_TX = 0x02;
-uint8_t S0_RX = 0x03;
-
-uint8_t OPEN = 0x01;
-uint8_t LISTEN = 0x02;
-uint8_t CONNECT_W = 0x04;
-uint8_t DISCON = 0x08;
-uint8_t CLOSE = 0x10;
-uint8_t SEND = 0x20;
-uint8_t SEND_MAC = 0x21;
-uint8_t SEND_KEEP = 0x22;
-uint8_t RECV = 0x40;
 
 uint8_t indexHTML[] = {
     "<html>\n<body>\n<h1>Hello, People! :) </h1>\n</body>\n</html>"
@@ -180,86 +166,6 @@ struct http_response {
     uint8_t header_cnt;
     struct http_body body;
 };
-
-static inline void cs_select() {
-    asm volatile("nop \n nop \n nop");
-    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 0);  // Active low
-    asm volatile("nop \n nop \n nop");
-}
-
-static inline void cs_deselect() {
-    asm volatile("nop \n nop \n nop");
-    gpio_put(PICO_DEFAULT_SPI_CSN_PIN, 1);
-    asm volatile("nop \n nop \n nop");
-}
-
-static void write_register(uint16_t address, uint8_t block, uint8_t *data, uint16_t len) {
-    uint8_t addr[3];
-    addr[0] = address >> 8;
-    addr[1] = address & 0x00FF;
-    addr[2] = block << 3 | 0x04;
-
-    cs_select();
-    spi_write_blocking(spi_default, addr, 3);
-    spi_write_blocking(spi_default, data, len);
-    cs_deselect();
-}
-
-static void read_registers(uint16_t address, uint8_t block, uint8_t *buf, uint16_t len) {
-    // For this particular device, we send the device the register we want to read
-    // first, then subsequently read from the device. The register is auto incrementing
-    // so we don't need to keep sending the register we want, just the first.
-    uint8_t addr[3];
-    addr[0] = address >> 8;
-    addr[1] = address & 0x00FF;
-    addr[2] = block << 3; 
-    cs_select();
-    spi_write_blocking(spi_default, addr, 3);
-    spi_read_blocking(spi_default, 0xFF, buf, len);
-    cs_deselect();
-}
-
-uint16_t receive(uint8_t sn, uint8_t *buf) {
-    uint8_t S_REGS = 0x01 + 0x04 * sn;
-    uint8_t S_RX = 0x03 + 0x04 * sn;
-
-    uint8_t size[2];
-    read_registers(0x0026, S_REGS, size, 2);
-    uint16_t RSR = size[0] << 8 | size[1];
-
-    uint8_t a[2];
-    read_registers(0x0028, S_REGS, a, 2);
-    uint16_t address = a[0] << 8 | a[1];
-
-    read_registers(address & 0x7FF, S_RX, buf, RSR);
-
-    address += RSR;
-    a[0] = address >> 8;
-    a[1] = address & 0xFF;
-    write_register(0x0028, S_REGS, a, 2);
-
-    write_register(0x0001, S_REGS, &RECV, 1);
-
-    return RSR;
-}
-
-void send(uint8_t sn, uint8_t *buf, uint16_t length) {
-    uint8_t S_REGS = 0x01 + 0x04 * sn;
-    uint8_t S_TX = 0x02 + 0x04 * sn;
-
-    uint8_t tx_a[2];
-    read_registers(0x0024, S_REGS, tx_a, 2);
-    uint16_t tx_address = tx_a[0] << 8 | tx_a[1];
-
-    write_register(tx_address & 0x7FF, S_TX, buf, length);
-
-    tx_address += length;
-    tx_a[0] = tx_address >> 8;
-    tx_a[1] = tx_address & 0xFF;
-    write_register(0x0024, S_REGS, tx_a, 2);
-
-    write_register(0x0001, S_REGS, &SEND, 1);
-}
 
 int parseHTTP(uint8_t *message, uint16_t size, struct http_request *rq) {
     uint16_t mess_ptr = 0;
@@ -648,54 +554,52 @@ int main () {
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, 1);
 
-    uint8_t id;
-    read_registers(0x0039, COM_REGS, &id, 1);
+    uint8_t id = readChipID();
+    //read_registers(0x0039, 0x00, &id, 1);
 
     printf("Chip ID is 0x%02x\n", id);
     
-    sleep_ms(10);
-
     printf("Setting Gateway IP address...\n");
 
     uint8_t g_ip[4] = {192, 168, 1, 254};
-    write_register(0x0001, COM_REGS, g_ip, 4);
+    write_register(0x0001, 0x00, g_ip, 4);
 
     printf("Setting Chip MAC address...\n");
 
     uint8_t MAC[6] = {0x12, 0x34, 0x56, 0x78, 0x90, 0x12};
-    write_register(0x0009, COM_REGS, MAC, 6);
+    write_register(0x0009, 0x00, MAC, 6);
 
     printf("Setting Source IP address...\n");
 
     uint8_t s_ip[4] = {192, 168, 1, 100};
-    write_register(0x000F, COM_REGS, s_ip, 4);
+    write_register(0x000F, 0x00, s_ip, 4);
 
     printf("Setting Subnet Mask...\n");
 
     uint8_t subnet[4] = {255, 255, 255, 0};
-    write_register(0x0005, COM_REGS, subnet, 4);
+    write_register(0x0005, 0x00, subnet, 4);
 
     printf("Setting up Socket 0...\n");
 
     // set Socket 0 to TCP Mode
     uint8_t S0_MODE = 0x01; // TCP
-    write_register(0x0000, S0_REGS, &S0_MODE, 1);
+    write_register(0x0000, 0x01, &S0_MODE, 1);
 
     // set port number to 5000
     uint16_t S0_PORT_NUM = 80;
     uint8_t S0_PORT[2] = {S0_PORT_NUM >> 8, S0_PORT_NUM & 0xFF};
-    write_register(0x0004, S0_REGS, S0_PORT, 2);
+    write_register(0x0004, 0x01, S0_PORT, 2);
 
     uint8_t interrupt_clear = 0x1F;
-    write_register(0x0002, S0_REGS, &interrupt_clear, 1);
+    write_register(0x0002, 0x01, &interrupt_clear, 1);
 
     // set Socket 0 to OPEN, then LISTEN
-    write_register(0x0001, S0_REGS, &OPEN, 1);
+    socketCommand(0, OPEN);
     uint8_t status;
     do {
-        read_registers(0x0003, S0_REGS, &status, 1);
+        read_registers(0x0003, 0x01, &status, 1);
     } while (status != 0x13);
-    write_register(0x0001, S0_REGS, &LISTEN, 1);
+    socketCommand(0, LISTEN);
 
     while (1) {
         uint8_t c[2048];
@@ -719,16 +623,16 @@ int main () {
             free(rs.body.body);
             free(rq.body.body);
 
-            write_register(0x0002, S0_REGS, &interrupt_clear, 1);
+            write_register(0x0002, 0x01, &interrupt_clear, 1);
         }
 
         uint8_t status;
-        read_registers(0x0003, S0_REGS, &status, 1);
+        read_registers(0x0003, 0x01, &status, 1);
 
         if (status == 0x1C) {
-            write_register(0x0001, S0_REGS, &CLOSE, 1);
-            write_register(0x0001, S0_REGS, &OPEN, 1);
-            write_register(0x0001, S0_REGS, &LISTEN, 1);
+            socketCommand(0, CLOSE);
+            socketCommand(0, OPEN);
+            socketCommand(0, LISTEN);
         }
     }
 }
