@@ -8,10 +8,13 @@
 #include "hardware/sync.h"
 #include "lfs.h"
 #include "W5500.h"
+#include "web_files.h"
 
 // variables used by the filesystem
 lfs_t lfs;
 lfs_file_t file;
+
+#define REMOVE_FILES 1
 
 #define FLASH_OFFSET (1024 * 1024) // 1 MB
 #define FLASH_SIZE   (1024 * 1024) // 1 MB
@@ -85,14 +88,6 @@ const struct lfs_config cfg = {
     .block_cycles = 500,
 };
 
-uint8_t indexHTML[] = {
-    "<html>\n<body>\n<h1>Hello, People! :) </h1>\n</body>\n</html>"
-};
-
-uint8_t blake[] = {
-    "<html>\n<body>\n<h1>Hello, Blake! :) </h1>\n</body>\n</html>"
-};
-
 uint8_t clayton[] = {
     "<html>\n<body>\n<h1>Hello, Clayton! :) </h1>\n</body>\n</html>"
 };
@@ -150,7 +145,7 @@ struct http_header {
 
 struct http_body {
     uint8_t *body;
-    uint16_t size;
+    uint32_t size;
 };
 
 struct http_request {
@@ -167,8 +162,8 @@ struct http_response {
     struct http_body body;
 };
 
-int parseHTTP(uint8_t *message, uint16_t size, struct http_request *rq) {
-    uint16_t mess_ptr = 0;
+int parseHTTP(uint8_t *message, uint32_t size, struct http_request *rq) {
+    uint32_t mess_ptr = 0;
     uint8_t i = 0;
     while (message[mess_ptr] != ' ') {
         rq->rq_line.method[i] = message[mess_ptr];
@@ -252,9 +247,9 @@ int parseHTTP(uint8_t *message, uint16_t size, struct http_request *rq) {
     return 0;
 }
 
-uint16_t formatResponse(uint8_t *message, struct http_response *rs) {
-    uint8_t i = 0;
-    uint16_t mess_ptr = 0;
+uint32_t formatResponse(uint8_t *message, struct http_response *rs) {
+    uint32_t i = 0;
+    uint32_t mess_ptr = 0;
     while (rs->stat_line.http_version[i] != '\0') {
         message[mess_ptr] = rs->stat_line.http_version[i];
         i++; mess_ptr++;
@@ -310,7 +305,7 @@ uint16_t formatResponse(uint8_t *message, struct http_response *rs) {
     message[mess_ptr] = '\n';
     mess_ptr++;
 
-    for (int n = 0; n < rs->body.size; n++) {
+    for (uint32_t n = 0; n < rs->body.size; n++) {
         message[mess_ptr] = rs->body.body[n];
         mess_ptr++;
     }
@@ -318,89 +313,78 @@ uint16_t formatResponse(uint8_t *message, struct http_response *rs) {
     return mess_ptr;
 }
 
-void respondGET(struct http_request *rq, struct http_response *rs, int code) {
-    struct lfs_info info;
-    int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
-
-    if (stat != 0) {
-        strcpy(rs->stat_line.status_code, "404");
-        strcpy(rs->stat_line.reason_phrase, "Not Found");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    } else {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        strcat(rq->rq_line.uri, "/index.html");
-        lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
-    }
-}
-
 void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
     strcpy(rs->stat_line.http_version, "HTTP/1.1");
 
-    struct lfs_info info;
-    int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
+    if (strcmp(rq->rq_line.method, "GET") == 0) {
+        struct lfs_info info;
+        int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
+        printf("%s\n", rq->rq_line.uri);
 
-    if (stat != 0) {
-        strcpy(rs->stat_line.status_code, "404");
-        strcpy(rs->stat_line.reason_phrase, "Not Found");
-        rs->header_cnt = 3;
-        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
-        strcpy(rs->headers[0].name, "Connection");
-        strcpy(rs->headers[0].value, "close");
-        strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
+        if (stat != 0) {
+            strcpy(rs->stat_line.status_code, "404");
+            strcpy(rs->stat_line.reason_phrase, "Not Found");
+            rs->header_cnt = 3;
+            lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
+            rs->body.size = lfs_file_size(&lfs, &file);
+            rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+            lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+            lfs_file_close(&lfs, &file);
+            strcpy(rs->headers[0].name, "Connection");
+            strcpy(rs->headers[0].value, "close");
+            strcpy(rs->headers[1].name, "Content-Length");
+            uint8_t length[16];
+            sprintf(length, "%d\0", rs->body.size);
+            strcpy(rs->headers[1].value, length);
+            strcpy(rs->headers[2].name, "Content-Type");
+            strcpy(rs->headers[2].value, "text/html");
+        } else {
+            strcpy(rs->stat_line.status_code, "200");
+            strcpy(rs->stat_line.reason_phrase, "OK");
+            rs->header_cnt = 3;
+            printf("%s\n", rq->rq_line.uri);
+            if (strcmp(rq->rq_line.uri, "/style.css") == 0 || strcmp(rq->rq_line.uri, "/bootstrap.css") == 0) {
+                strcat(rq->rq_line.uri, ".gz");
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/css");
+            } else if (strcmp(rq->rq_line.uri, "/minimal-theme-switcher.js") == 0 || strcmp(rq->rq_line.uri, "/jquery.js") == 0) {
+                strcat(rq->rq_line.uri, ".gz");
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/javascript");
+            } else if (strcmp(rq->rq_line.uri, "/") == 0){
+                strcat(rq->rq_line.uri, "index.html.gz");
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
+            } else {
+                strcat(rq->rq_line.uri, ".gz");
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
+            }
+            strcpy(rs->headers[2].name, "Content-Encoding");
+            strcpy(rs->headers[2].value, "gzip");
+            lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
+            printf("%s\n", rq->rq_line.uri);
+            rs->body.size = lfs_file_size(&lfs, &file);
+            rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
+            lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
+            lfs_file_close(&lfs, &file);
+            strcpy(rs->headers[0].name, "Content-Length");
+            uint8_t length[16];
+            sprintf(length, "%d\0", rs->body.size);
+            printf("Testing\n");
+            strcpy(rs->headers[0].value, length);
+            printf("Testing3\n");
+        }
     } else {
-        strcpy(rs->stat_line.status_code, "200");
-        strcpy(rs->stat_line.reason_phrase, "OK");
-        rs->header_cnt = 3;
-        strcat(rq->rq_line.uri, "/index.html");
-        lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
-        rs->body.size = lfs_file_size(&lfs, &file);
-        rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-        lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-        lfs_file_close(&lfs, &file);
+        strcpy(rs->stat_line.status_code, "405");
+        strcpy(rs->stat_line.reason_phrase, "Method Not Allowed");
+        rs->header_cnt = 2;
+        rs->body.size = 0;
+        rs->body.body = NULL;
         strcpy(rs->headers[0].name, "Connection");
         strcpy(rs->headers[0].value, "close");
         strcpy(rs->headers[1].name, "Content-Length");
-        uint8_t length[16];
-        sprintf(length, "%d\0", rs->body.size);
-        strcpy(rs->headers[1].value, length);
-        strcpy(rs->headers[2].name, "Content-Type");
-        strcpy(rs->headers[2].value, "text/html");
+        strcpy(rs->headers[1].value, "0");
     }
 }
 
@@ -435,17 +419,11 @@ int main () {
     #ifdef REMOVE_FILES
 
     lfs_remove(&lfs, "/index.html");
-    lfs_remove(&lfs, "/404.html");
-    lfs_remove(&lfs, "/blake/index.html");
-    lfs_remove(&lfs, "/blake");
-    lfs_remove(&lfs, "/clayton/index.html");
-    lfs_remove(&lfs, "/clayton");
-    lfs_remove(&lfs, "/cami/index.html");
-    lfs_remove(&lfs, "/cami");
-    lfs_remove(&lfs, "/edc/index.html");
-    lfs_remove(&lfs, "/edc");
-    lfs_remove(&lfs, "/mikhail/index.html");
-    lfs_remove(&lfs, "/mikhail");
+    lfs_remove(&lfs, "/index.html.gz");
+    lfs_remove(&lfs, "/style.css");
+    lfs_remove(&lfs, "/style.css.gz");
+    lfs_remove(&lfs, "/minimal-theme-switcher.js");
+    lfs_remove(&lfs, "/minimal-theme-switcher.js.gz");
 
     #endif
 
@@ -455,90 +433,48 @@ int main () {
     if (stat != 0) {
         printf("Creating index.html...\n");
         lfs_file_open(&lfs, &file, "/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(indexHTML);
-        lfs_file_write(&lfs, &file, indexHTML, sizeof(uint8_t) * file_size);
+        uint32_t file_size = index_html_len;
+        lfs_file_write(&lfs, &file, index_html, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+        lfs_file_open(&lfs, &file, "/index.html.gz", LFS_O_RDWR | LFS_O_CREAT);
+        file_size = index_html_gz_len;
+        lfs_file_write(&lfs, &file, index_html_gz, sizeof(uint8_t) * file_size);
         lfs_file_close(&lfs, &file);
     } else {
         printf("index.html already exists...\n");
     }
 
-    stat = lfs_stat(&lfs, "/404.html", &info);
+    stat = lfs_stat(&lfs, "/style.css", &info);
 
     if (stat != 0) {
-        printf("Creating 404.html...\n");
-        lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(error404);
-        lfs_file_write(&lfs, &file, error404, sizeof(uint8_t) * file_size);
+        printf("Creating style.css...\n");
+        lfs_file_open(&lfs, &file, "/style.css", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = style_css_len;
+        lfs_file_write(&lfs, &file, style_css, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+        lfs_file_open(&lfs, &file, "/style.css.gz", LFS_O_RDWR | LFS_O_CREAT);
+        file_size = style_css_gz_len;
+        lfs_file_write(&lfs, &file, style_css_gz, sizeof(uint8_t) * file_size);
         lfs_file_close(&lfs, &file);
     } else {
-        printf("404.html already exists...\n");
+        printf("style.css already exists...\n");
     }
 
-    stat = lfs_stat(&lfs, "/blake", &info);
+    stat = lfs_stat(&lfs, "/minimal-theme-switcher.js", &info);
 
     if (stat != 0) {
-        printf("Creating Blake folder...\n");
-        lfs_mkdir(&lfs, "/blake");
-        lfs_file_open(&lfs, &file, "/blake/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(blake);
-        lfs_file_write(&lfs, &file, blake, sizeof(uint8_t) * file_size);
+        printf("Creating minimal-theme-switcher.js...\n");
+        lfs_file_open(&lfs, &file, "/minimal-theme-switcher.js", LFS_O_RDWR | LFS_O_CREAT);
+        uint32_t file_size = minimal_theme_switcher_js_len;
+        lfs_file_write(&lfs, &file, minimal_theme_switcher_js, sizeof(uint8_t) * file_size);
+        lfs_file_close(&lfs, &file);
+        lfs_file_open(&lfs, &file, "/minimal-theme-switcher.js.gz", LFS_O_RDWR | LFS_O_CREAT);
+        file_size = minimal_theme_switcher_js_gz_len;
+        lfs_file_write(&lfs, &file, minimal_theme_switcher_js_gz, sizeof(uint8_t) * file_size);
         lfs_file_close(&lfs, &file);
     } else {
-        printf("Blake folder already exists...\n");
+        printf("style.css already exists...\n");
     }
-
-    stat = lfs_stat(&lfs, "/clayton", &info);
-
-    if (stat != 0) {
-        printf("Creating Clayton folder...\n");
-        lfs_mkdir(&lfs, "/clayton");
-        lfs_file_open(&lfs, &file, "/clayton/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(clayton);
-        lfs_file_write(&lfs, &file, clayton, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("Clayton folder already exists...\n");
-    }
-
-    stat = lfs_stat(&lfs, "/cami", &info);
-
-    if (stat != 0) {
-        printf("Creating Cami folder...\n");
-        lfs_mkdir(&lfs, "/cami");
-        lfs_file_open(&lfs, &file, "/cami/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(cami);
-        lfs_file_write(&lfs, &file, cami, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("Cami folder already exists...\n");
-    }
-
-    stat = lfs_stat(&lfs, "/edc", &info);
-
-    if (stat != 0) {
-        printf("Creating EDC folder...\n");
-        lfs_mkdir(&lfs, "/edc");
-        lfs_file_open(&lfs, &file, "/edc/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(edc);
-        lfs_file_write(&lfs, &file, edc, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("EDC folder already exists...\n");
-    }
-
-    stat = lfs_stat(&lfs, "/mikhail", &info);
-
-    if (stat != 0) {
-        printf("Creating Mikahil folder...\n");
-        lfs_mkdir(&lfs, "/mikhail");
-        lfs_file_open(&lfs, &file, "/mikhail/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = strlen(mikhail);
-        lfs_file_write(&lfs, &file, mikhail, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("Mikhail folder already exists...\n");
-    }
-
     printf("Reading Chip ID of W5500...\n");
 
     spi_init(spi_default, 5000*1000);
@@ -606,19 +542,21 @@ int main () {
         if (ir & 0x04) {
             struct http_request rq;
             struct http_response rs;
-            uint16_t size = receive(0, c);
+            printf("Testing\n");
+            uint32_t size = receive(0, c);
             int code = parseHTTP(c, size, &rq);
             printRequest(&rq);
             respondHTTP(&rq, &rs, code);
-            size = formatResponse(c, &rs);
-            gpio_put(PICO_DEFAULT_LED_PIN, !gpio_get(PICO_DEFAULT_LED_PIN));
-            c[size] = '\0';
-            printf("%s\n", c);
-            
-            send(0, c, size);
-
-            free(rs.body.body);
+            printf("Testing1\n");
             free(rq.body.body);
+            size = formatResponse(c, &rs);
+            printf("Testing2\n");
+            gpio_put(PICO_DEFAULT_LED_PIN, !gpio_get(PICO_DEFAULT_LED_PIN));
+            //c[size] = '\0';
+            //printf("%s\n", c);
+            //printf("Testing1\n");
+            send(0, c, size);
+            free(rs.body.body);
 
             clearSocketInterrupt(0, ir);
         }

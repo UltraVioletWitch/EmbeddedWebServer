@@ -94,8 +94,8 @@ void cs_deselect();
 void write_register(uint16_t address, uint8_t block, uint8_t *data, uint16_t len);
 void read_registers(uint16_t address, uint8_t block, uint8_t *buf, uint16_t len);
 
-uint16_t receive(uint8_t sn, uint8_t *buf);
-void send(uint8_t sn, uint8_t *buf, uint16_t length);
+uint32_t receive(uint8_t sn, uint8_t *buf);
+void send(uint8_t sn, uint8_t *buf, uint32_t length);
 
 void socketCommand(uint8_t sn, uint8_t com);
 

@@ -1,4 +1,5 @@
 #include "W5500.h"
+#include "stdio.h"
 
 void cs_select() {
     asm volatile("nop \n nop \n nop");
@@ -37,19 +38,19 @@ void read_registers(uint16_t address, uint8_t block, uint8_t *buf, uint16_t len)
 
 void socketCommand(uint8_t sn, uint8_t com) {
     uint8_t reg = S_REGS(sn);
-    write_register(0x0001, reg, &com, 1);
+    write_register(Sn_CR, reg, &com, 1);
 }
 
-uint16_t receive(uint8_t sn, uint8_t *buf) {
+uint32_t receive(uint8_t sn, uint8_t *buf) {
     uint8_t reg = S_REGS(sn);
     uint8_t rx  = S_RX(sn);
 
     uint8_t size[2];
-    read_registers(0x0026, reg, size, 2);
+    read_registers(Sn_RX_RSR, reg, size, 2);
     uint16_t RSR = size[0] << 8 | size[1];
 
     uint8_t a[2];
-    read_registers(0x0028, reg, a, 2);
+    read_registers(Sn_RX_RD, reg, a, 2);
     uint16_t address = a[0] << 8 | a[1];
 
     read_registers(address & 0x7FF, rx, buf, RSR);
@@ -57,29 +58,43 @@ uint16_t receive(uint8_t sn, uint8_t *buf) {
     address += RSR;
     a[0] = address >> 8;
     a[1] = address & 0xFF;
-    write_register(0x0028, reg, a, 2);
+    write_register(Sn_RX_RD, reg, a, 2);
 
     socketCommand(sn, RECV);
 
     return RSR;
 }
 
-void send(uint8_t sn, uint8_t *buf, uint16_t length) {
+void send(uint8_t sn, uint8_t *buf, uint32_t length) {
     uint8_t reg = S_REGS(sn);
     uint8_t tx  =   S_TX(sn);
+    uint32_t ptr = 0;
+    printf("Testing2\n");
+    while (length > 0) {
 
-    uint8_t tx_a[2];
-    read_registers(0x0024, reg, tx_a, 2);
-    uint16_t tx_address = tx_a[0] << 8 | tx_a[1];
+        uint8_t fsr[2];
+        read_registers(Sn_TX_FSR, reg, fsr, 2);
+        uint16_t l = (fsr[0] << 8) | (fsr[1]);
 
-    write_register(tx_address & 0x7FF, tx, buf, length);
+        if (l > length) {
+            l = length;
+        }
 
-    tx_address += length;
-    tx_a[0] = tx_address >> 8;
-    tx_a[1] = tx_address & 0xFF;
-    write_register(0x0024, reg, tx_a, 2);
+        uint8_t tx_a[2];
+        read_registers(Sn_TX_WR, reg, tx_a, 2);
+        uint16_t tx_address = tx_a[0] << 8 | tx_a[1];
 
-    socketCommand(sn, SEND);
+        write_register(tx_address & 0x7FF, tx, buf + ptr, l);
+
+        tx_address += l;
+        tx_a[0] = tx_address >> 8;
+        tx_a[1] = tx_address & 0xFF;
+        write_register(Sn_TX_WR, reg, tx_a, 2);
+
+        socketCommand(sn, SEND);
+        ptr += l;
+        length -= l;
+    }
 }
 
 uint8_t readChipID() {

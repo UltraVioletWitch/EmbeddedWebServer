@@ -1,0 +1,7 @@
+#!/bin/bash
+
+rm ../web_files.h
+
+for f in *.html *.css *.js; do gzip -k "$f"; done
+for f in *.html *.css *.js *.gz *.pdf; do xxd -i "$f" | sed 's/unsigned char/const unsigned char/' >>web_files.h; done
+mv web_files.h ../
