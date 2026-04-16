@@ -88,26 +88,6 @@ const struct lfs_config cfg = {
     .block_cycles = 500,
 };
 
-uint8_t clayton[] = {
-    "<html>\n<body>\n<h1>Hello, Clayton! :) </h1>\n</body>\n</html>"
-};
-
-uint8_t cami[] = {
-    "<html>\n<body>\n<h1>Hello, Cami! :) </h1>\n</body>\n</html>"
-};
-
-uint8_t edc[] = {
-    "<html>\n<body>\n<h1>Hello, EDC! :) </h1>\n</body>\n</html>"
-};
-
-uint8_t mikhail[] = {
-    "<html>\n<body>\n<h1>Hello, Mikhail! :) </h1>\n</body>\n</html>"
-};
-
-uint8_t error404[] = {
-    "<!DOCTYPE HTML PUBLIC \"-//IETF//DTD HTML 2.0//EN\">\n<html>\n<head>\n<title>404 Not Found</title>\n</head>\n<body>\n<h1>Not Found</h1>\n<p>The requested URL was not found on this server.</p>\n</body>\n</html>"
-};
-
 uint8_t *header_types[] = {"Accept", "Accept-Charset", "Accept-Encoding", "Accept-Language", "Accept-Ranges", "Age",
     "Allow", "Authorization", "Cache-Control", "Connection", "Content-Encoding", "Content-Langauge", "Content-Length",
     "Content-Location", "Content-MD5", "Content-Range", "Content-Type", "Date", "ETag", "Expect", "Expires", "From",
@@ -161,6 +141,14 @@ struct http_response {
     uint8_t header_cnt;
     struct http_body body;
 };
+
+typedef enum {
+    VERSION,
+    CODE,
+    PHRASE,
+    HEADER,
+    BODY
+} responseState;
 
 int parseHTTP(uint8_t *message, uint32_t size, struct http_request *rq) {
     uint32_t mess_ptr = 0;
@@ -245,6 +233,107 @@ int parseHTTP(uint8_t *message, uint32_t size, struct http_request *rq) {
     rq->body.body[i] = '\0';
 
     return 0;
+}
+
+uint32_t sendResponse(struct http_response *rs) {
+    uint16_t buf_size = 2048;
+    uint8_t buf[buf_size];
+    uint32_t i = 0;
+    uint32_t mess_ptr = 0;
+    bool sent = false;
+    responseState stage = VERSION;
+    uint16_t size = 0;
+
+    while (rs->stat_line.http_version[i] != '\0') {
+        buf[size] = rs->stat_line.http_version[i];
+        i++; mess_ptr++; size++;
+    }
+
+    buf[size] = ' ';
+    i = 0; mess_ptr++; size++;
+
+    while (rs->stat_line.status_code[i] != '\0') {
+        buf[size] = rs->stat_line.status_code[i];
+        i++; mess_ptr++; size++;
+    }
+
+    buf[size] = ' ';
+    i = 0; mess_ptr++; size++;
+
+    while (rs->stat_line.reason_phrase[i] != '\0') {
+        buf[size] = rs->stat_line.reason_phrase[i];
+        i++; mess_ptr++; size++;
+    }
+
+    buf[size] = '\r';
+    mess_ptr++; size++;
+    buf[size] = '\n';
+    mess_ptr++; size++;
+
+    send(0, buf, size);
+    buf[size] = '\0';
+    printf("%s", buf);
+
+    for (int n = 0; n < rs->header_cnt; n++) {
+        i = 0; size = 0;
+        while (rs->headers[n].name[i] != '\0') {
+            buf[size] = rs->headers[n].name[i];
+            i++; mess_ptr++; size++;
+        }
+
+        buf[size] = ':';
+        mess_ptr++; size++;
+        buf[size] = ' ';
+        mess_ptr++; size++;
+
+        i = 0;
+        while (rs->headers[n].value[i] != '\0') {
+            buf[size] = rs->headers[n].value[i];
+            i++; mess_ptr++; size++;
+        }
+
+        buf[size] = '\r';
+        mess_ptr++; size++;
+        buf[size] = '\n';
+        mess_ptr++; size++;
+
+        send(0, buf, size);
+        buf[size] = '\0';
+        printf("%s", buf);
+    }
+
+    size = 0;
+
+    buf[size] = '\r';
+    mess_ptr++; size++;
+    buf[size] = '\n';
+    mess_ptr++; size++;
+
+    send(0, buf, size);
+    buf[size] = '\0';
+    printf("%s", buf);
+
+    size = 0;
+
+    for (uint32_t n = 0; n < rs->body.size; n++) {
+        buf[size] = rs->body.body[n];
+        mess_ptr++; size++;
+
+        if (size == buf_size - 1) {
+            send(0, buf, size);
+            buf[size] = '\0';
+            printf("%s", buf);
+            size = 0;
+        }
+    }
+
+    if (size > 0) {
+        send(0, buf, size);
+        buf[size] = '\0';
+        printf("%s", buf);
+    }
+
+    return mess_ptr;
 }
 
 uint32_t formatResponse(uint8_t *message, struct http_response *rs) {
@@ -542,20 +631,21 @@ int main () {
         if (ir & 0x04) {
             struct http_request rq;
             struct http_response rs;
-            printf("Testing\n");
+            //printf("Testing\n");
             uint32_t size = receive(0, c);
             int code = parseHTTP(c, size, &rq);
             printRequest(&rq);
             respondHTTP(&rq, &rs, code);
-            printf("Testing1\n");
+            //printf("Testing1\n");
             free(rq.body.body);
-            size = formatResponse(c, &rs);
-            printf("Testing2\n");
+            //size = formatResponse(c, &rs);
+            size = sendResponse(&rs);
+            //printf("Testing2\n");
             gpio_put(PICO_DEFAULT_LED_PIN, !gpio_get(PICO_DEFAULT_LED_PIN));
             //c[size] = '\0';
             //printf("%s\n", c);
             //printf("Testing1\n");
-            send(0, c, size);
+            //send(0, c, size);
             free(rs.body.body);
 
             clearSocketInterrupt(0, ir);
