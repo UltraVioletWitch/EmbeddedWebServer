@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="color-scheme" content="light dark">
+        <title>Blog Post</title>
+        <meta name="description" content="Blog Post Template">
+
+        <link rel="stylesheet" href="style.css">
+
+        <style>
+            /* ===== SIDEBAR (your existing system) ===== */
+            aside {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                width: 320px;
+
+                display: flex;
+                flex-direction: column;
+
+                background: #fff;
+                z-index: 2000;
+
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+
+                overflow: hidden;
+                padding: 1rem;
+            }
+
+            aside:not(.collapsed) {
+                transform: translateX(0);
+            }
+
+            details {
+                padding-top: 1rem;
+                border-top: 1px solid rgba(0,0,0,0.4);
+                padding-bottom: 1rem;
+                border-bottom: 1px solid rgba(0,0,0,0.4);
+            }
+
+            /* ===== MAIN BLOG LAYOUT ===== */
+            main {
+                padding: 1rem;
+            }
+
+            /* Toggle button */
+            .toggle-btn {
+                position: fixed;
+                top: 0.75rem;
+                left: 0.75rem;
+                z-index: 1000;
+
+                padding: 0.4rem 0.6rem;
+                font-size: 1.2rem;
+                line-height: 1;
+
+                border-radius 6px;
+            }
+
+            .sidebar-content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 0.5rem;
+            }
+
+            .theme-selector {
+                margin-top: auto;
+                padding-top: 1rem;
+                border-top: 1px solid rgba(0,0,0,0.1);
+            }
+
+            /* Dark mode tweaks */
+            [data-theme="dark"] aside {
+                background-color: #111111;
+                border-right: 1px solid rgba(255,255,255,0.08);
+            }
+
+            [data-theme="dark"] .theme-selector {
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+
+            [data-theme="dark"] details {
+                border-top: 1px solid rgba(255,255,255,0.4);
+                border-bottom: 1px solid rgba(255,255,255,0.4);
+            }
+
+        </style>
+    </head>
+
+    <body>
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside id="sidebar" class="collapsed">
+            <nav class="sidebar-content">
+                <ul>
+                    <li><strong>Navigation Menu!</strong></li>
+                    <li><a href="/">Home!</a></li>
+                    <li><a href="about_me.html">About Me!</a></li>
+                    <li><a href="about_this_site.html">About this Site!</a></li>
+                    <li><a href="resume.pdf" target="_black">Resume!</a></li>
+                    <li>
+                        <details>
+                            <summary>Projects!</summary>
+                            <ul>
+                                <li><a href="#">Embedded Web Server!</a></li>
+                                <li><a href="#">Flight Computer!</a></li>
+                                <li><a href="#">Quadcopter!</a></li>
+                            </ul>
+                        </details>
+                    </li>
+                </ul>
+            </nav>
+
+            <div class="theme-selector">
+                <label for="theme">Theme</label>
+                <select id="theme" onchange="setTheme(this.value)">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Auto</option>
+                </select>
+            </div>
+        </aside>
+
+        <!-- ===== TOGGLE BUTTON ===== -->
+        <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+
+        <!-- ===== MAIN BLOG CONTENT ===== -->
+        <main class="container">
+            <header>
+                <h1>My Blog Post Title</h1>
+                <p><small>April 17, 2026 • by Author Name</small></p>
+            </header>
+
+            <hr>
+
+            <p>
+                This is your blog content area. It stays centered and readable
+                while the sidebar overlays on demand.
+            </p>
+
+            <h2>Section Heading</h2>
+            <p>
+                Add paragraphs, images, code blocks, etc.
+            </p>
+
+            <pre><code>console.log("Hello blog");</code></pre>
+
+            <h2>Another Section</h2>
+            <p>
+                Continue writing your post here.
+            </p>
+        </main>
+
+        <!-- ===== SCRIPT (sidebar behavior) ===== -->
+        <script>
+        const sidebar = document.getElementById("sidebar");
+        const toggleBtn = document.querySelector(".toggle-btn");
+
+        function closeSidebar() {
+            sidebar.classList.add("collapsed");
+            document.body.classList.remove("menu-open");
+        }
+
+        function toggleSidebar() {
+            sidebar.classList.toggle("collapsed");
+
+            document.body.classList.toggle(
+                "menu-open",
+                !sidebar.classList.contains("collapsed")
+            );
+        }
+
+        // Click outside to close
+        document.addEventListener("click", function (e) {
+            const isClickInsideSidebar = sidebar.contains(e.target);
+            const isToggleButton = toggleBtn.contains(e.target);
+
+            if (!isClickInsideSidebar && !isToggleButton) {
+                closeSidebar();
+            }
+        });
+
+        // ✅ ESC key to close
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && !sidebar.classList.contains("collapsed")) {
+                closeSidebar();
+            }
+        });
+
+        function setTheme(theme) {
+            if (theme === "auto") {
+                document.documentElement.removeAttribute("data-theme");
+                localStorage.removeItem("theme");
+            } else {
+                document.documentElement.setAttribute("data-theme", theme);
+                localStorage.setItem("theme", theme);
+            }
+        }
+
+        // Load saved theme on page load
+        (function () {
+            const saved = localStorage.getItem("theme");
+            if (saved) {
+                document.documentElement.setAttribute("data-theme", saved);
+                document.getElementById("theme").value = saved;
+            }
+        })();
+        </script>
+    </body>
+</html>

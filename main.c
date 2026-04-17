@@ -282,11 +282,6 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
                 rs->body.body = (uint8_t*) style_css_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/css");
-            } else if (strcmp(rq->rq_line.uri, "/minimal-theme-switcher.js") == 0) {
-                rs->body.size = minimal_theme_switcher_js_gz_len;
-                rs->body.body = (uint8_t*) minimal_theme_switcher_js_gz;
-                strcpy(rs->headers[1].name, "Content-Type");
-                strcpy(rs->headers[1].value, "text/javascript");
             } else if (strcmp(rq->rq_line.uri, "/modal.js") == 0) {
                 rs->body.size = modal_js_gz_len;
                 rs->body.body = (uint8_t*) modal_js_gz;
@@ -297,24 +292,31 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
                 rs->body.body = (uint8_t*) Violet_Kramer_Resume_pdf;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "application/pdf");
-            } else if (strcmp(rq->rq_line.uri, "/image.webp") == 0) {
-                rs->body.size = image_webp_len;
-                rs->body.body = (uint8_t*) image_webp;
-                strcpy(rs->headers[1].name, "Content-Type");
-                strcpy(rs->headers[1].value, "image/webp");
-            } else if (strcmp(rq->rq_line.uri, "/image.jpg") == 0) {
-                rs->body.size = image_jpg_len;
-                rs->body.body = (uint8_t*) image_jpg;
-                strcpy(rs->headers[1].name, "Content-Type");
-                strcpy(rs->headers[1].value, "image/jpeg");
-            } else if (strcmp(rq->rq_line.uri, "/") == 0){
+            } else if (strcmp(rq->rq_line.uri, "/") == 0 || strcmp(rq->rq_line.uri, "/index.html") == 0){
                 rs->body.size = index_html_gz_len;
                 rs->body.body = (uint8_t*) index_html_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/html");
+            } else if (strcmp(rq->rq_line.uri, "/template.html") == 0){
+                rs->body.size = post_template_html_gz_len;
+                rs->body.body = (uint8_t*) post_template_html_gz;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
+            } else if (strcmp(rq->rq_line.uri, "/about_me.html") == 0){
+                rs->body.size = about_me_html_gz_len;
+                rs->body.body = (uint8_t*) about_me_html_gz;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
+            } else if (strcmp(rq->rq_line.uri, "/about_this_site.html") == 0){
+                rs->body.size = about_this_site_html_gz_len;
+                rs->body.body = (uint8_t*) about_this_site_html_gz;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
             } else {
-                rs->body.size = index_html_gz_len;
-                rs->body.body = (uint8_t*) index_html_gz;
+                strcpy(rs->stat_line.status_code, "404");
+                strcpy(rs->stat_line.reason_phrase, "Not Found");
+                rs->body.size = four_o_four_html_gz_len;
+                rs->body.body = (uint8_t*) four_o_four_html_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/html");
             }
