@@ -6,87 +6,8 @@
 #include "hardware/spi.h"
 #include "hardware/flash.h"
 #include "hardware/sync.h"
-#include "lfs.h"
 #include "W5500.h"
 #include "web_files.h"
-
-// variables used by the filesystem
-lfs_t lfs;
-lfs_file_t file;
-
-#define REMOVE_FILES 1
-
-#define FLASH_OFFSET (1024 * 1024) // 1 MB
-#define FLASH_SIZE   (1024 * 1024) // 1 MB
-
-#define BLOCK_SIZE 4096
-#define READ_SIZE  256
-#define PROG_SIZE  256
-#define BLOCK_COUNT (FLASH_SIZE / BLOCK_SIZE)
-
-static int flash_read(const struct lfs_config *c,
-                      lfs_block_t block,
-                      lfs_off_t off, 
-                      void *buffer,
-                      lfs_size_t size) {
-    const uint8_t *flash = (const uint8_t *)(XIP_BASE + FLASH_OFFSET);
-    memcpy(buffer, flash + (block * BLOCK_SIZE) + off, size);
-    return 0;
-}
-
-static int flash_prog(const struct lfs_config *c,
-                      lfs_block_t block,
-                      lfs_off_t off,
-                      const void *buffer,
-                      lfs_size_t size) {
-
-    uint32_t ints = save_and_disable_interrupts();
-
-    flash_range_program(
-        FLASH_OFFSET + (block * BLOCK_SIZE) + off,
-        (const uint8_t *)buffer,
-        size
-    );
-
-    restore_interrupts(ints);
-    return 0;
-}
-
-static int flash_erase(const struct lfs_config *c,
-                       lfs_block_t block) {
-
-    uint32_t ints = save_and_disable_interrupts();
-
-    flash_range_erase(
-        FLASH_OFFSET + (block * BLOCK_SIZE),
-        BLOCK_SIZE
-    );
-
-    restore_interrupts(ints);
-    return 0;
-}
-
-static int flash_sync(const struct lfs_config *c) {
-    return 0;
-}
-
-// configuration of the filesystem is provided by this struct
-const struct lfs_config cfg = {
-    // block device operations
-    .read  = flash_read,
-    .prog  = flash_prog,
-    .erase = flash_erase,
-    .sync  = flash_sync,
-
-    // block device configuration
-    .read_size = READ_SIZE,
-    .prog_size = PROG_SIZE,
-    .block_size = BLOCK_SIZE,
-    .block_count = BLOCK_COUNT,
-    .cache_size = 256,
-    .lookahead_size = 256,
-    .block_cycles = 500,
-};
 
 uint8_t *header_types[] = {"Accept", "Accept-Charset", "Accept-Encoding", "Accept-Language", "Accept-Ranges", "Age",
     "Allow", "Authorization", "Cache-Control", "Connection", "Content-Encoding", "Content-Langauge", "Content-Length",
@@ -271,8 +192,8 @@ uint32_t sendResponse(struct http_response *rs) {
     mess_ptr++; size++;
 
     send(0, buf, size);
-    buf[size] = '\0';
-    printf("%s", buf);
+    //buf[size] = '\0';
+    //printf("%s", buf);
 
     for (int n = 0; n < rs->header_cnt; n++) {
         i = 0; size = 0;
@@ -298,8 +219,8 @@ uint32_t sendResponse(struct http_response *rs) {
         mess_ptr++; size++;
 
         send(0, buf, size);
-        buf[size] = '\0';
-        printf("%s", buf);
+        //buf[size] = '\0';
+        //printf("%s", buf);
     }
 
     size = 0;
@@ -310,8 +231,8 @@ uint32_t sendResponse(struct http_response *rs) {
     mess_ptr++; size++;
 
     send(0, buf, size);
-    buf[size] = '\0';
-    printf("%s", buf);
+    //buf[size] = '\0';
+    //printf("%s", buf);
 
     size = 0;
 
@@ -321,82 +242,16 @@ uint32_t sendResponse(struct http_response *rs) {
 
         if (size == buf_size - 1) {
             send(0, buf, size);
-            buf[size] = '\0';
-            printf("%s", buf);
+            //buf[size] = '\0';
+            //printf("%s", buf);
             size = 0;
         }
     }
 
     if (size > 0) {
         send(0, buf, size);
-        buf[size] = '\0';
-        printf("%s", buf);
-    }
-
-    return mess_ptr;
-}
-
-uint32_t formatResponse(uint8_t *message, struct http_response *rs) {
-    uint32_t i = 0;
-    uint32_t mess_ptr = 0;
-    while (rs->stat_line.http_version[i] != '\0') {
-        message[mess_ptr] = rs->stat_line.http_version[i];
-        i++; mess_ptr++;
-    }
-
-    message[mess_ptr] = ' ';
-    i = 0; mess_ptr++;
-
-    while (rs->stat_line.status_code[i] != '\0') {
-        message[mess_ptr] = rs->stat_line.status_code[i];
-        i++; mess_ptr++;
-    }
-
-    message[mess_ptr] = ' ';
-    i = 0; mess_ptr++;
-
-    while (rs->stat_line.reason_phrase[i] != '\0') {
-        message[mess_ptr] = rs->stat_line.reason_phrase[i];
-        i++; mess_ptr++;
-    }
-
-    message[mess_ptr] = '\r';
-    mess_ptr++;
-    message[mess_ptr] = '\n';
-    mess_ptr++;
-
-    for (int n = 0; n < rs->header_cnt; n++) {
-        i = 0;
-        while (rs->headers[n].name[i] != '\0') {
-            message[mess_ptr] = rs->headers[n].name[i];
-            i++; mess_ptr++;
-        }
-
-        message[mess_ptr] = ':';
-        mess_ptr++;
-        message[mess_ptr] = ' ';
-        mess_ptr++;
-
-        i = 0;
-        while (rs->headers[n].value[i] != '\0') {
-            message[mess_ptr] = rs->headers[n].value[i];
-            i++; mess_ptr++;
-        }
-
-        message[mess_ptr] = '\r';
-        mess_ptr++;
-        message[mess_ptr] = '\n';
-        mess_ptr++;
-    }
-
-    message[mess_ptr] = '\r';
-    mess_ptr++;
-    message[mess_ptr] = '\n';
-    mess_ptr++;
-
-    for (uint32_t n = 0; n < rs->body.size; n++) {
-        message[mess_ptr] = rs->body.body[n];
-        mess_ptr++;
+        //buf[size] = '\0';
+        //printf("%s", buf);
     }
 
     return mess_ptr;
@@ -406,19 +261,10 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
     strcpy(rs->stat_line.http_version, "HTTP/1.1");
 
     if (strcmp(rq->rq_line.method, "GET") == 0) {
-        struct lfs_info info;
-        int stat = lfs_stat(&lfs, rq->rq_line.uri, &info);
-        printf("%s\n", rq->rq_line.uri);
-
-        if (stat != 0) {
+        if (0) {
             strcpy(rs->stat_line.status_code, "404");
             strcpy(rs->stat_line.reason_phrase, "Not Found");
             rs->header_cnt = 3;
-            lfs_file_open(&lfs, &file, "/404.html", LFS_O_RDWR);
-            rs->body.size = lfs_file_size(&lfs, &file);
-            rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-            lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-            lfs_file_close(&lfs, &file);
             strcpy(rs->headers[0].name, "Connection");
             strcpy(rs->headers[0].value, "close");
             strcpy(rs->headers[1].name, "Content-Length");
@@ -431,38 +277,53 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
             strcpy(rs->stat_line.status_code, "200");
             strcpy(rs->stat_line.reason_phrase, "OK");
             rs->header_cnt = 3;
-            printf("%s\n", rq->rq_line.uri);
-            if (strcmp(rq->rq_line.uri, "/style.css") == 0 || strcmp(rq->rq_line.uri, "/bootstrap.css") == 0) {
-                strcat(rq->rq_line.uri, ".gz");
+            if (strcmp(rq->rq_line.uri, "/style.css") == 0) {
+                rs->body.size = style_css_gz_len;
+                rs->body.body = (uint8_t*) style_css_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/css");
-            } else if (strcmp(rq->rq_line.uri, "/minimal-theme-switcher.js") == 0 || strcmp(rq->rq_line.uri, "/jquery.js") == 0) {
-                strcat(rq->rq_line.uri, ".gz");
+            } else if (strcmp(rq->rq_line.uri, "/minimal-theme-switcher.js") == 0) {
+                rs->body.size = minimal_theme_switcher_js_gz_len;
+                rs->body.body = (uint8_t*) minimal_theme_switcher_js_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/javascript");
+            } else if (strcmp(rq->rq_line.uri, "/modal.js") == 0) {
+                rs->body.size = modal_js_gz_len;
+                rs->body.body = (uint8_t*) modal_js_gz;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/javascript");
+            } else if (strcmp(rq->rq_line.uri, "/resume.pdf") == 0) {
+                rs->body.size = Violet_Kramer_Resume_pdf_len;
+                rs->body.body = (uint8_t*) Violet_Kramer_Resume_pdf;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "application/pdf");
+            } else if (strcmp(rq->rq_line.uri, "/image.webp") == 0) {
+                rs->body.size = image_webp_len;
+                rs->body.body = (uint8_t*) image_webp;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "image/webp");
+            } else if (strcmp(rq->rq_line.uri, "/image.jpg") == 0) {
+                rs->body.size = image_jpg_len;
+                rs->body.body = (uint8_t*) image_jpg;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "image/jpeg");
             } else if (strcmp(rq->rq_line.uri, "/") == 0){
-                strcat(rq->rq_line.uri, "index.html.gz");
+                rs->body.size = index_html_gz_len;
+                rs->body.body = (uint8_t*) index_html_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/html");
             } else {
-                strcat(rq->rq_line.uri, ".gz");
+                rs->body.size = index_html_gz_len;
+                rs->body.body = (uint8_t*) index_html_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/html");
             }
             strcpy(rs->headers[2].name, "Content-Encoding");
             strcpy(rs->headers[2].value, "gzip");
-            lfs_file_open(&lfs, &file, rq->rq_line.uri, LFS_O_RDWR);
-            printf("%s\n", rq->rq_line.uri);
-            rs->body.size = lfs_file_size(&lfs, &file);
-            rs->body.body = malloc((rs->body.size) * sizeof(uint8_t));
-            lfs_file_read(&lfs, &file, rs->body.body, rs->body.size * sizeof(uint8_t));
-            lfs_file_close(&lfs, &file);
             strcpy(rs->headers[0].name, "Content-Length");
             uint8_t length[16];
             sprintf(length, "%d\0", rs->body.size);
-            printf("Testing\n");
             strcpy(rs->headers[0].value, length);
-            printf("Testing3\n");
         }
     } else {
         strcpy(rs->stat_line.status_code, "405");
@@ -497,73 +358,6 @@ int main () {
 
     sleep_ms(2000);
 
-    printf("Initializing filesystem...\n");
-    int err = lfs_mount(&lfs, &cfg);
-
-    if (err) {
-        lfs_format(&lfs, &cfg);
-        lfs_mount(&lfs, &cfg);
-    }
-
-    #ifdef REMOVE_FILES
-
-    lfs_remove(&lfs, "/index.html");
-    lfs_remove(&lfs, "/index.html.gz");
-    lfs_remove(&lfs, "/style.css");
-    lfs_remove(&lfs, "/style.css.gz");
-    lfs_remove(&lfs, "/minimal-theme-switcher.js");
-    lfs_remove(&lfs, "/minimal-theme-switcher.js.gz");
-
-    #endif
-
-    struct lfs_info info;
-    int stat = lfs_stat(&lfs, "/index.html", &info);
-
-    if (stat != 0) {
-        printf("Creating index.html...\n");
-        lfs_file_open(&lfs, &file, "/index.html", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = index_html_len;
-        lfs_file_write(&lfs, &file, index_html, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-        lfs_file_open(&lfs, &file, "/index.html.gz", LFS_O_RDWR | LFS_O_CREAT);
-        file_size = index_html_gz_len;
-        lfs_file_write(&lfs, &file, index_html_gz, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("index.html already exists...\n");
-    }
-
-    stat = lfs_stat(&lfs, "/style.css", &info);
-
-    if (stat != 0) {
-        printf("Creating style.css...\n");
-        lfs_file_open(&lfs, &file, "/style.css", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = style_css_len;
-        lfs_file_write(&lfs, &file, style_css, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-        lfs_file_open(&lfs, &file, "/style.css.gz", LFS_O_RDWR | LFS_O_CREAT);
-        file_size = style_css_gz_len;
-        lfs_file_write(&lfs, &file, style_css_gz, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("style.css already exists...\n");
-    }
-
-    stat = lfs_stat(&lfs, "/minimal-theme-switcher.js", &info);
-
-    if (stat != 0) {
-        printf("Creating minimal-theme-switcher.js...\n");
-        lfs_file_open(&lfs, &file, "/minimal-theme-switcher.js", LFS_O_RDWR | LFS_O_CREAT);
-        uint32_t file_size = minimal_theme_switcher_js_len;
-        lfs_file_write(&lfs, &file, minimal_theme_switcher_js, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-        lfs_file_open(&lfs, &file, "/minimal-theme-switcher.js.gz", LFS_O_RDWR | LFS_O_CREAT);
-        file_size = minimal_theme_switcher_js_gz_len;
-        lfs_file_write(&lfs, &file, minimal_theme_switcher_js_gz, sizeof(uint8_t) * file_size);
-        lfs_file_close(&lfs, &file);
-    } else {
-        printf("style.css already exists...\n");
-    }
     printf("Reading Chip ID of W5500...\n");
 
     spi_init(spi_default, 5000*1000);
@@ -580,7 +374,6 @@ int main () {
     gpio_put(PICO_DEFAULT_LED_PIN, 1);
 
     uint8_t id = readChipID();
-    //read_registers(0x0039, 0x00, &id, 1);
 
     printf("Chip ID is 0x%02x\n", id);
     
@@ -631,22 +424,17 @@ int main () {
         if (ir & 0x04) {
             struct http_request rq;
             struct http_response rs;
-            //printf("Testing\n");
+
             uint32_t size = receive(0, c);
             int code = parseHTTP(c, size, &rq);
-            printRequest(&rq);
+
+            //printRequest(&rq);
+
             respondHTTP(&rq, &rs, code);
-            //printf("Testing1\n");
             free(rq.body.body);
-            //size = formatResponse(c, &rs);
             size = sendResponse(&rs);
-            //printf("Testing2\n");
+
             gpio_put(PICO_DEFAULT_LED_PIN, !gpio_get(PICO_DEFAULT_LED_PIN));
-            //c[size] = '\0';
-            //printf("%s\n", c);
-            //printf("Testing1\n");
-            //send(0, c, size);
-            free(rs.body.body);
 
             clearSocketInterrupt(0, ir);
         }

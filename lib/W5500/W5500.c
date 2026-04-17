@@ -69,7 +69,6 @@ void send(uint8_t sn, uint8_t *buf, uint32_t length) {
     uint8_t reg = S_REGS(sn);
     uint8_t tx  =   S_TX(sn);
     uint32_t ptr = 0;
-    printf("Testing2\n");
     while (length > 0) {
 
         uint8_t fsr[2];
