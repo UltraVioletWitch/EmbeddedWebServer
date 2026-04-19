@@ -312,6 +312,11 @@ void respondHTTP(struct http_request *rq, struct http_response *rs, int code) {
                 rs->body.body = (uint8_t*) about_this_site_html_gz;
                 strcpy(rs->headers[1].name, "Content-Type");
                 strcpy(rs->headers[1].value, "text/html");
+            } else if (strcmp(rq->rq_line.uri, "/led") == 0){
+                rs->body.size = about_this_site_html_gz_len;
+                rs->body.body = (uint8_t*) about_this_site_html_gz;
+                strcpy(rs->headers[1].name, "Content-Type");
+                strcpy(rs->headers[1].value, "text/html");
             } else {
                 strcpy(rs->stat_line.status_code, "404");
                 strcpy(rs->stat_line.reason_phrase, "Not Found");
