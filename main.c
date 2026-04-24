@@ -409,7 +409,7 @@ int main () {
     // set Socket 0 to TCP Mode
     setSocketMode(0, TCP);
 
-    // set port number to 5000
+    // set port number to 80
     uint16_t S0_PORT_NUM = 80;
     setSocketPort(0, S0_PORT_NUM);
 
